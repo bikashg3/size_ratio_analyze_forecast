@@ -541,8 +541,8 @@ size_types_ordered = size_type_series.reindex(sizes_ordered)
 core_mask_top = size_types_ordered == "core"
 fringe_mask_top = size_types_ordered == "fringe"
 
-# Extended sizes based on labels (2XL and above)
-extended_labels = {"2XL", "3XL", "4XL", "5XL", "6XL"}
+# Extended sizes based on labels (3XL and above)
+extended_labels = {"3XL", "4XL", "5XL", "6XL"}
 extended_mask_top = pd.Series(
     [sz.upper() in extended_labels for sz in sizes_ordered],
     index=sizes_ordered,
