@@ -1842,7 +1842,7 @@ The engine ensures:
         r"core\_share = \sum_{s \in core} final\_ratio(s)"
     )
     st.latex(
-        r"core\_share \in [core\_share\_{min}, core\_share\_{max}] = [0.70, 0.90]"
+        r"core\_share \in [core\_share\_{min}, core\_share\_{max}] = [0.70, 0.85]"
     )
     st.markdown('</div>', unsafe_allow_html=True)
 
