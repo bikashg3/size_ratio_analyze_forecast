@@ -710,192 +710,901 @@ def build_core_fringe_chart(sizes, final, size_type) -> go.Figure:
 with tab_logic:
     st.subheader("📘 Full Logic Overview")
 
-    st.markdown("This page explains the complete logic behind the size ratio engine.")
-
-    st.markdown("#### 1. Filter valid data")
     st.markdown(
-        "- We drop rows with `Status = 'Dropped'` and keep all valid sales data.\n"
-        "- All downstream curves are built only on this **clean base**."
+        """
+This tab explains the **complete logic** behind the size-ratio engine, step by step,
+with equations and a numeric walk-through for one size of the currently selected option.
+
+Think of the engine as answering:
+
+> *“Given all my sales history and portfolio behaviour, what is the safest, most
+>  business-sensible size curve for this option?”*
+"""
     )
 
-    st.markdown("#### 2. Build raw option size curve")
-    st.markdown("For each option `o` and size `s`:")
+    # ---------------- 1. Input data & cleaning ---------------- #
+    st.markdown("### 1️⃣ Input data & cleaning")
 
-    st.markdown('<div class="formula-box">', unsafe_allow_html=True)
-    st.latex(r"opt\_total\_ros(o) = \sum_{s} ROS(o, s)")
+    st.markdown(
+        """
+We start from ROS at `(option, stockcode, size)` level.
+
+- Drop rows where `Status = 'Dropped'`.
+- All curves and diagnostics are computed only on this **clean base**.
+"""
+    )
+
+    st.markdown("Mathematically we define:")
+    st.latex(r"ROS(o,s) = \text{total ROS for option } o \text{ in size } s.")
     st.latex(
-        r"opt\_ratio(o, s) = \frac{ROS(o, s)}{\sum_{s'} ROS(o, s')}"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        "- This curve reflects **how this option actually sold by size**.\n"
-        "- It can be biased if some sizes were often out of stock."
+        r"""
+ROS(o,s)
+= \sum_{\text{stockcode } k} ROS(o,k,s)
+"""
     )
 
-    st.markdown("#### 3. Build category baselines (Cat L3 and Cat L2)")
+    # ---------------- 2. Raw option size curve ---------------- #
+    st.markdown("### 2️⃣ Raw option size curve (what the option itself says)")
 
-    st.markdown(
-        "We aggregate ROS at sub-category (`Cat L3`) and category (`Cat L2`) level:"
-    )
+    st.markdown("For each option \\(o\\) and size \\(s\\):")
 
-    st.markdown('<div class="formula-box">', unsafe_allow_html=True)
     st.latex(
-        r"cat\_l3\_ratio(c3, s) = "
-        r"\frac{ROS(c3, s)}{\sum_{s'} ROS(c3, s')}"
-    )
-    st.latex(
-        r"cat\_l2\_ratio(c2, s) = "
-        r"\frac{ROS(c2, s)}{\sum_{s'} ROS(c2, s')}"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        "- These curves represent **portfolio behaviour** of that sub-category and category.\n"
-        "- They are more stable than any single option."
-    )
-
-    st.markdown("#### 4. Category strength (Cat L3 inside Cat L2)")
-
-    st.markdown(
-        "We measure how important a sub-category is inside its parent category:"
-    )
-
-    st.markdown('<div class="formula-box">', unsafe_allow_html=True)
-    st.latex(
-        r"share_{cat3} = \frac{TotalROS(cat3)}{TotalROS(cat2)}"
+        r"""
+opt\_total\_ros(o)
+= \sum_{s} ROS(o,s)
+"""
     )
     st.latex(
-        r"cat3\_strength = share_{cat3}^{0.5}"
+        r"""
+opt\_ratio(o,s)
+= \frac{ROS(o,s)}{\sum_{s'} ROS(o,s')}
+= \frac{ROS(o,s)}{opt\_total\_ros(o)}
+"""
     )
-    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(
-        "- If a Cat L3 is a big chunk of Cat L2, its curve is more trustworthy.\n"
-        "- Strength is squashed with a square-root so that very large shares don't dominate too aggressively."
+        """
+Business meaning:
+- This is **the option’s own raw preference by size**.
+- If sizes were frequently out of stock, this curve can be biased or incomplete.
+"""
     )
 
-    st.markdown("#### 5. Option strength (within its Cat L3)")
-
-    st.markdown(
-        "We compare the option to its peers in the same sub-category:"
-    )
-
-    st.markdown('<div class="formula-box">', unsafe_allow_html=True)
+    st.markdown("**Edge cases:**")
     st.latex(
-        r"T = ROS(option), \quad M = median\_ROS(\text{options in same Cat L3})"
+        r"""
+opt\_ratio(o,s) =
+\begin{cases}
+0 & \text{if } opt\_total\_ros(o) = 0 \\
+\frac{ROS(o,s)}{opt\_total\_ros(o)} & \text{otherwise}
+\end{cases}
+"""
     )
+
+    # ---------------- 3. Category baselines ---------------- #
+    st.markdown("### 3️⃣ Category baselines (Cat L3 & Cat L2 curves)")
+
+    st.markdown(
+        """
+We build **portfolio size curves** at two levels:
+
+- \\( c3 \\): Cat L3 (e.g., “Deo-Soft Supima Solid Trunk”)
+- \\( c2 \\): Cat L2 (e.g., “Trunk”)
+"""
+    )
+
     st.latex(
-        r"base = \begin{cases}"
-        r"\dfrac{T}{T+M} & M > 0 \\"
-        r"0.5 & M \le 0 \text{ and } T > 0 \\"
-        r"0 & T = 0"
-        r"\end{cases}"
-    )
-    st.latex(
-        r"option\_strength = base^{1.0}"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        "- High ROS vs peers ⇒ strength close to 1.\n"
-        "- Weak option ⇒ strength closer to 0.\n"
-        "- This strength decides how much we trust the **option curve vs category curves**."
-    )
-
-    st.markdown("#### 6. Core vs fringe size tagging")
-
-    st.markdown(
-        "- At Cat L3 and Cat L2 level, we sort sizes by share and pick minimal set covering ~80% ROS (min 2, max 3 sizes). "
-        "These are inferred **core sizes**.\n"
-        "- Everything else becomes **fringe**.\n"
-        "- For a given option, if it has good coverage on expected core sizes, we trust its option curve more."
-    )
-
-    st.markdown("#### 7. Blend option, Cat L3, and Cat L2 curves per size")
-
-    st.markdown(
-        "For each option and size `s`, we assign weights that depend on:\n"
-        "- Option strength\n"
-        "- Cat L3 strength\n"
-        "- Whether `s` is core or fringe"
-    )
-
-    st.markdown('<div class="formula-box">', unsafe_allow_html=True)
-    st.latex(
-        r"shape(s) = "
-        r"w_{opt}(s)\,opt\_ratio(s) + "
-        r"w_{c3}(s)\,cat\_l3\_ratio(s) + "
-        r"w_{c2}(s)\,cat\_l2\_ratio(s)"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        "- For **core sizes**, we allow higher `w_opt` if option strength is high.\n"
-        "- For **fringe sizes**, we lean more on Cat L3 / Cat L2 baselines.\n"
-        "- If Cat L3/Cat L2 curves are missing, we fall back to global size curve."
-    )
-
-    st.markdown("#### 8. Colour behaviour & bias")
-
-    st.markdown(
-        "We look at how this colour behaves vs overall, Cat L2, and Cat L3:"
-    )
-
-    st.markdown('<div class="formula-box">', unsafe_allow_html=True)
-    st.latex(
-        r"\text{bias}_{global}(s) = "
-        r"\begin{cases}"
-        r"\dfrac{global\_color\_ratio(s)}{global\_ratio(s)} & global\_ratio(s) > 0 \\"
-        r"1 & \text{otherwise}"
-        r"\end{cases}"
+        r"""
+cat\_l3\_ratio(c3,s)
+= \frac{ROS(c3,s)}{\sum_{s'} ROS(c3,s')}
+"""
     )
     st.latex(
-        r"bias(s) = w_g\,\text{bias}_{global}(s) + "
-        r"w_2\,\text{bias}_{cat2}(s) + "
-        r"w_3\,\text{bias}_{cat3}(s)"
+        r"""
+cat\_l2\_ratio(c2,s)
+= \frac{ROS(c2,s)}{\sum_{s'} ROS(c2,s')}
+"""
     )
-    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(
-        "- If this colour over-indexes in certain sizes, bias > 1 there.\n"
-        "- If it under-indexes, bias < 1.\n"
-        "- We clamp bias to **[0.7, 1.3] for core**, **[0.8, 1.2] for fringe** so colour never overpowers the business reality."
+        """
+Business meaning:
+- **Cat L3 curve**: “How this sub-category sells by size overall.”
+- **Cat L2 curve**: “How the full category sells by size.”
+- More robust than any single option.
+"""
     )
 
-    st.markdown("#### 9. Core share guardrails")
-
-    st.markdown(
-        "After applying colour, we check the final share of core sizes:"
-    )
-
-    st.markdown('<div class="formula-box">', unsafe_allow_html=True)
+    st.markdown("**Edge cases:**")
     st.latex(
-        r"core\_share = \sum_{s \in core} final\_ratio(s)"
+        r"""
+cat\_l3\_ratio(c3,s) =
+\begin{cases}
+0 & \text{if } \sum_{s'} ROS(c3,s') = 0 \\
+\frac{ROS(c3,s)}{\sum_{s'} ROS(c3,s')} & \text{otherwise}
+\end{cases}
+"""
     )
     st.latex(
-        r"core\_share \in [0.70, 0.90]"
+        r"""
+cat\_l2\_ratio(c2,s) =
+\begin{cases}
+0 & \text{if } \sum_{s'} ROS(c2,s') = 0 \\
+\frac{ROS(c2,s)}{\sum_{s'} ROS(c2,s')} & \text{otherwise}
+\end{cases}
+"""
     )
-    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---------------- 4. Category strength ---------------- #
+    st.markdown("### 4️⃣ Category strength (Cat L3 inside Cat L2)")
 
     st.markdown(
-        "- If core share is too low/high, we rescale core vs fringe to bring it into [70%, 90%] while keeping intra-core and intra-fringe shapes intact."
+        """
+We measure how important this Cat L3 is inside its parent Cat L2.
+"""
     )
 
-    st.markdown("#### 10. Extended sizes floors")
+    st.latex(
+        r"""
+TotalROS(c3) = \sum_{s} ROS(c3,s), \qquad
+TotalROS(c2) = \sum_{s} ROS(c2,s)
+"""
+    )
+    st.latex(
+        r"""
+share_{cat3}
+= \frac{TotalROS(c3)}{TotalROS(c2)}
+"""
+    )
+    st.latex(
+        r"""
+cat3\_strength
+= share_{cat3}^{0.5}
+"""
+    )
 
     st.markdown(
-        "- For 3XL, 4XL, 5XL etc., we set a minimum floor relative to Cat L2 + colour curve.\n"
-        "- This avoids allocating **zero** to extended sizes where the brand wants a minimum presence."
+        """
+- If a Cat L3 contributes a lot to Cat L2, \\( cat3\\_strength \\) is higher.
+- The square root dampens very large categories so they don’t dominate everything.
+"""
     )
-
-    st.markdown("#### 11. Final normalization and output")
 
     st.markdown(
-        "- After all adjustments, we re-normalize so that "
-        r"$\sum_s final\_ratio(s) = 1$ for each option.\n"
-        "- Output is **one row per (option, size)** with full diagnostics."
+        "**Edge case:** if \\( TotalROS(c2) = 0 \\Rightarrow share_{cat3} = 0 "
+        "\\Rightarrow cat3\\_strength = 0.**"
     )
+
+    # ---------------- 5. Option strength ---------------- #
+    st.markdown("### 5️⃣ Option strength (how strong is this option vs peers)")
+
+    st.markdown(
+        """
+We compare the option’s ROS versus the **median option ROS in the same Cat L3**.
+"""
+    )
+
+    st.latex(
+        r"""
+T = opt\_total\_ros(o), \qquad
+M = \operatorname{median}\{\;opt\_total\_ros(o')\;|\;o' \in \text{same Cat L3}\;\}
+"""
+    )
+    st.latex(
+        r"""
+base =
+\begin{cases}
+\dfrac{T}{T + M} & M > 0 \\
+0.5 & M \le 0 \text{ and } T > 0 \\
+0 & T = 0
+\end{cases}
+"""
+    )
+    st.latex(
+        r"""
+option\_strength = base^{1.0} = base
+"""
+    )
+
+    st.markdown(
+        """
+- High ROS option → \\( option\\_strength \\) closer to **1**.
+- Weak option → \\( option\\_strength \\) closer to **0**.
+"""
+    )
+
+    # ---------------- 6. Core vs fringe & core coverage ---------------- #
+    st.markdown("### 6️⃣ Core vs fringe sizes & core coverage")
+
+    st.markdown("**Step 6.1 – Infer portfolio core sizes (Cat L3 / Cat L2)**")
+
+    st.markdown(
+        """
+For each Cat L3:
+
+- Sort sizes by \\( cat\_l3\_ratio(c3,s) \\) descending.
+- Pick minimal set of sizes whose cumulative share ≥ **80%**  
+  (subject to a min/max number of sizes).
+- Those sizes form **core** for that sub-category; rest are **fringe**.
+
+If Cat L3 is too thin, we fall back to Cat L2 and/or a default {M, L, XL}.
+"""
+    )
+
+    st.markdown("**Step 6.2 – Tag sizes per option**")
+
+    st.markdown(
+        """
+- For each option, intersect available sizes with the **expected core set**.
+- `size_type` per row: `core`, `fringe`, or `one_size` (if option has only one size).
+"""
+    )
+
+    st.markdown("**Step 6.3 – Core coverage for the option**")
+
+    st.markdown(
+        """
+Let:
+- \\( C_{\\text{expected}} \\): set of expected core sizes for this Cat L3.
+- \\( C_{\\text{present}} \\): core sizes actually present for this option.
+"""
+    )
+    st.latex(
+        r"""
+core\_coverage =
+\begin{cases}
+\dfrac{|C_{\text{present}}|}{|C_{\text{expected}}|} & |C_{\text{expected}}| > 0 \\
+1 & |C_{\text{expected}}| = 0
+\end{cases}
+"""
+    )
+
+    st.markdown(
+        """
+If the option is missing key core sizes, \\( core\\_coverage < 1 \\) and the engine
+penalises option influence:
+"""
+    )
+    st.latex(
+        r"""
+option\_strength\_used
+= \min\left(1,\; \max\left(0,\; option\_strength \times core\_coverage\right)\right)
+"""
+    )
+
+    # ---------------- 7. Weight formulas: w_opt(s), w_cat3(s), w_cat2(s) ---------------- #
+    st.markdown("### 7️⃣ Size-level weights: \\(w_{opt}(s), w_{cat3}(s), w_{cat2}(s)\\)")
+
+    st.markdown(
+        """
+Weights depend on:
+
+- `size_type` (core vs fringe vs one_size),
+- \\( option\\_strength\\_used \\),
+- \\( cat3\\_strength \\),
+- and hyperparameters:  
+  \\( opt\\_core\\_min = 0.20, opt\\_core\\_max = 0.60 \\)  
+  \\( opt\\_fringe\\_min = 0.05, opt\\_fringe\\_max = 0.25 \\)
+"""
+    )
+
+    st.markdown("**For core sizes (and one_size treated as core-ish):**")
+    st.latex(
+        r"""
+w_{opt}^{core}(s)
+= opt\_core\_min
++ \left(opt\_core\_max - opt\_core\_min\right) \cdot option\_strength\_used
+"""
+    )
+    st.latex(
+        r"""
+w_{cat\_total}^{core}(s)
+= 1 - w_{opt}^{core}(s)
+"""
+    )
+    st.latex(
+        r"""
+f_{cat3}^{core}
+= \operatorname{clip}\bigl(0.50 + 0.10 \cdot cat3\_strength,\; 0,\; 1\bigr)
+"""
+    )
+    st.latex(
+        r"""
+w_{cat3}^{core}(s) = w_{cat\_total}^{core}(s) \cdot f_{cat3}^{core},
+\qquad
+w_{cat2}^{core}(s) = w_{cat\_total}^{core}(s) \cdot \bigl(1 - f_{cat3}^{core}\bigr)
+"""
+    )
+
+    st.markdown("**For fringe sizes:**")
+    st.latex(
+        r"""
+w_{opt}^{fringe}(s)
+= opt\_fringe\_min
++ \left(opt\_fringe\_max - opt\_fringe\_min\right) \cdot option\_strength\_used
+"""
+    )
+    st.latex(
+        r"""
+w_{cat\_total}^{fringe}(s) = 1 - w_{opt}^{fringe}(s)
+"""
+    )
+    st.latex(
+        r"""
+f_{cat3}^{fringe}
+= \operatorname{clip}\bigl(0.45 + 0.05 \cdot cat3\_strength,\; 0,\; 1\bigr)
+"""
+    )
+    st.latex(
+        r"""
+w_{cat3}^{fringe}(s) = w_{cat\_total}^{fringe}(s) \cdot f_{cat3}^{fringe},
+\qquad
+w_{cat2}^{fringe}(s) = w_{cat\_total}^{fringe}(s) \cdot \bigl(1 - f_{cat3}^{fringe}\bigr)
+"""
+    )
+
+    st.markdown(
+        """
+In code:
+
+- `w_opt_size`, `w_cat3_size`, `w_cat2_size` are exactly these \\(w_{opt}(s), w_{cat3}(s), w_{cat2}(s)\\)
+  applied per size row, using `size_type` to pick core vs fringe formula.
+- `one_size` uses the **core** formula.
+"""
+    )
+
+    # ---------------- 8. Shape before colour ---------------- #
+    st.markdown("### 8️⃣ Blended shape before colour")
+
+    st.markdown(
+        """
+Using the weights we blend **option**, **Cat L3** and **Cat L2** curves.
+"""
+    )
+
+    st.latex(
+        r"""
+shape\_raw(s)
+= w_{opt}(s)\,opt\_ratio(o,s)
++ w_{cat3}(s)\,cat\_l3\_ratio(c3,s)
++ w_{cat2}(s)\,cat\_l2\_ratio(c2,s)
+"""
+    )
+    st.latex(
+        r"""
+shape\_norm\_no\_color(s)
+= \frac{shape\_raw(s)}{\sum_{s'} shape\_raw(s')}
+"""
+    )
+
+    st.markdown(
+        """
+Business meaning:
+- For **strong options in core sizes**, \\(w_{opt}(s)\\) is higher.
+- For **weak options / fringe sizes**, more weight flows to Cat L3 & Cat L2.
+"""
+    )
+
+    st.markdown(
+        "**Edge case:** if \\( \sum_{s'} shape\_raw(s') \le 0 \\) we use a uniform split "
+        "across sizes."
+    )
+
+    # ---------------- 9. Colour behaviour ---------------- #
+    st.markdown("### 9️⃣ Colour behaviour & multiplicative bias")
+
+    st.markdown(
+        """
+When colour is available, we compare colour-specific size curves vs the base curves.
+"""
+    )
+
+    st.latex(
+        r"""
+global\_ratio(s),\; global\_color\_ratio(s)
+"""
+    )
+    st.latex(
+        r"""
+bias_{global}(s)
+=
+\begin{cases}
+\dfrac{global\_color\_ratio(s)}{global\_ratio(s)} & global\_ratio(s) > 0 \\
+1 & global\_ratio(s) = 0
+\end{cases}
+"""
+    )
+    st.latex(
+        r"""
+bias_{cat2}(s)
+=
+\begin{cases}
+\dfrac{cat\_l2\_color\_ratio(c2,s)}{cat\_l2\_ratio(c2,s)} & cat\_l2\_ratio(c2,s) > 0 \\
+1 & cat\_l2\_ratio(c2,s) = 0
+\end{cases}
+"""
+    )
+    st.latex(
+        r"""
+bias_{cat3}(s)
+=
+\begin{cases}
+\dfrac{cat\_l3\_color\_ratio(c3,s)}{cat\_l3\_ratio(c3,s)} & cat\_l3\_ratio(c3,s) > 0 \\
+1 & cat\_l3\_ratio(c3,s) = 0
+\end{cases}
+"""
+    )
+
+    st.markdown(
+        """
+We compute **colour weights** from volume shares. The exact scoring is piecewise,
+but in simplified form:
+"""
+    )
+    st.latex(
+        r"""
+w\_{col,global}
+= \frac{score_{global}}{score_{global} + score_{cat2} + score_{cat3}},\quad
+w\_{col,cat2}
+= \frac{score_{cat2}}{score_{global} + score_{cat2} + score_{cat3}},\quad
+w\_{col,cat3}
+= \frac{score_{cat3}}{score_{global} + score_{cat2} + score_{cat3}}
+"""
+    )
+
+    st.latex(
+        r"""
+bias\_raw(s)
+= w\_{col,global}\,bias_{global}(s)
++ w\_{col,cat2}\,bias_{cat2}(s)
++ w\_{col,cat3}\,bias_{cat3}(s)
+"""
+    )
+
+    st.markdown("We clamp the bias differently for core vs fringe:")
+    st.latex(
+        r"""
+bias\_{clamped}(s) =
+\begin{cases}
+\operatorname{clip}\bigl(bias\_raw(s),\; 0.7,\; 1.3\bigr) & s \text{ is core or one\_size} \\
+\operatorname{clip}\bigl(bias\_raw(s),\; 0.8,\; 1.2\bigr) & s \text{ is fringe}
+\end{cases}
+"""
+    )
+
+    st.latex(
+        r"""
+shape\_with\_color\_raw(s)
+= shape\_norm\_no\_color(s) \times bias\_{clamped}(s)
+"""
+    )
+    st.latex(
+        r"""
+shape\_with\_color\_norm(s)
+= \frac{shape\_with\_color\_raw(s)}{\sum_{s'} shape\_with\_color\_raw(s')}
+"""
+    )
+
+    st.markdown(
+        """
+Business meaning:
+- Colour can nudge sizes up/down by **±20–30%**, but cannot explode or kill a size.
+"""
+    )
+
+    # ---------------- 10. Core share guardrails ---------------- #
+    st.markdown("### 🔟 Core share guardrails")
+
+    st.markdown(
+        """
+We ensure total share on core sizes stays in a safe band:
+
+- \\( core\_share\_{min} = 0.70 \\)
+- \\( core\_share\_{max} = 0.85 \\)
+"""
+    )
+
+    st.latex(
+        r"""
+core\_share
+= \sum_{s \in core} shape\_with\_color\_norm(s)
+"""
+    )
+
+    st.latex(
+        r"""
+\text{target} =
+\begin{cases}
+core\_share\_{min} & \text{if } core\_share < core\_share\_{min} \\
+core\_share\_{max} & \text{if } core\_share > core\_share\_{max} \\
+core\_share & \text{otherwise}
+\end{cases}
+"""
+    )
+
+    st.markdown(
+        """
+We rescale core vs fringe blocks while keeping **within-core** and **within-fringe**
+shape unchanged.
+"""
+    )
+
+    st.latex(
+        r"""
+\sum_{s \in core} \alpha\,c(s) = \text{target}, \qquad
+\sum_{s \notin core} \beta\,f(s) = 1 - \text{target}
+"""
+    )
+    st.latex(
+        r"""
+final\_after\_core(s) =
+\begin{cases}
+\alpha\,c(s) & s \in core \\
+\beta\,f(s) & s \notin core
+\end{cases}
+"""
+    )
+
+    # ---------------- 11. Extended size floors ---------------- #
+    st.markdown("### 1️⃣1️⃣ Extended size floors (3XL and above)")
+
+    st.markdown(
+        """
+For extended sizes (e.g., 3XL, 4XL, 5XL, 6XL), we set a **minimum floor** vs Cat L2+colour.
+"""
+    )
+
+    st.latex(
+        r"""
+floor(s)
+= tail\_floor\_factor \times cat2\_color\_baseline(s),
+\qquad tail\_floor\_factor = 0.7
+"""
+    )
+    st.latex(
+        r"""
+final\_after\_tail(s)
+= \max\left(final\_after\_core(s),\ floor(s)\right)
+"""
+    )
+
+    st.markdown(
+        """
+Then we renormalise over all sizes.
+
+Business meaning:
+- Extended sizes never go to **exactly zero** if there is any reasonable Cat L2 evidence.
+"""
+    )
+
+    # ---------------- 12. Final normalisation ---------------- #
+    st.markdown("### 1️⃣2️⃣ Final normalisation & output")
+
+    st.latex(
+        r"""
+final\_ratio(o,s)
+= \frac{final\_after\_tail(s)}{\sum_{s'} final\_after\_tail(s')}
+"""
+    )
+
+    st.markdown(
+        """
+The engine outputs one row per `(option, size)` with:
+
+- `final_ratio(o,s)`
+- `ratio_source` (what dominated the final shape)
+- all intermediate diagnostics (strengths, weights, biases, guardrails, floors).
+"""
+    )
+
+        # ---------------- 13. Worked example with user-chosen size ---------------- #
+    st.markdown("---")
+    st.markdown("### 1️⃣3️⃣ Worked example: choose a size and see all steps")
+
+    with st.expander(
+        "🔍 Click to see a numeric walk-through for a specific size of this option",
+        expanded=False,
+    ):
+        try:
+            if df_opt_res.empty:
+                st.info("No diagnostics available for this option.")
+            else:
+                # All rows for this option
+                full_opt = df_opt_res.copy()
+                full_opt = full_opt.sort_values("final_ratio", ascending=False)
+
+                # Let user choose size
+                size_choices = list(full_opt["_size_str"].unique())
+                size_choices_sorted = order_sizes(size_choices)
+                default_idx = 0
+
+                chosen_size = st.selectbox(
+                    "Choose the size for which you want to see the working:",
+                    options=size_choices_sorted,
+                    index=default_idx,
+                )
+
+                # Row for chosen size (fallback to best if missing)
+                df_size = full_opt[full_opt["_size_str"] == chosen_size]
+                if df_size.empty:
+                    ex_row = full_opt.iloc[0]
+                    ex_size = str(ex_row["_size_str"])
+                else:
+                    ex_row = df_size.iloc[0]
+                    ex_size = chosen_size
+
+                size_type_ex = ex_row["size_type"]
+
+                st.markdown(
+                    f"**Example:** option `{selected_option}`, "
+                    f"size `{ex_size}` (tagged as **{size_type_ex}**)."
+                )
+
+                # ---------- Step A: raw ROS & option curve ----------
+                mask_ex = (
+                    mask_status_ok
+                    & (df_raw[option_col] == selected_option)
+                    & (df_raw[size_col].astype(str) == ex_size)
+                )
+                ros_ex = float(df_raw.loc[mask_ex, ros_col].sum())
+                opt_total = float(ex_row["opt_total_ros"])
+                opt_ratio_ex = float(ex_row["opt_ratio"])
+
+                st.markdown("**Step 1 – Raw option curve for this size**")
+                st.latex(
+                    r"opt\_total\_ros(o) = \sum_{s} ROS(o,s)"
+                )
+                st.latex(
+                    r"opt\_ratio(o,s) = \frac{ROS(o,s)}{opt\_total\_ros(o)}"
+                )
+                st.latex(
+                    r"opt\_ratio(o,s) = \frac{%.2f}{%.2f} \approx %.3f"
+                    % (ros_ex, opt_total, opt_ratio_ex)
+                )
+                st.markdown(
+                    f"- This size contributes **{_fmt_pct(opt_ratio_ex)}** of ROS for this option."
+                )
+
+                # ---------- Step B: category baselines ----------
+                cat3_total = float(ex_row["cat_l3_total_ros"])
+                cat3_ratio_ex = float(ex_row["cat_l3_ratio"])
+                cat3_ros_ex = cat3_total * cat3_ratio_ex
+
+                cat2_total = float(ex_row["cat_l2_total_ros"])
+                cat2_ratio_ex = float(ex_row["cat_l2_ratio"])
+                cat2_ros_ex = cat2_total * cat2_ratio_ex
+
+                st.markdown("**Step 2 – Category baselines for this size**")
+                st.latex(
+                    r"cat\_l3\_ratio(c3,s) = \frac{ROS(c3,s)}{TotalROS(c3)}"
+                )
+                st.latex(
+                    r"cat\_l3\_ratio(c3,s) = \frac{%.2f}{%.2f} \approx %.3f"
+                    % (cat3_ros_ex, cat3_total, cat3_ratio_ex)
+                )
+                st.latex(
+                    r"cat\_l2\_ratio(c2,s) = \frac{ROS(c2,s)}{TotalROS(c2)}"
+                )
+                st.latex(
+                    r"cat\_l2\_ratio(c2,s) = \frac{%.2f}{%.2f} \approx %.3f"
+                    % (cat2_ros_ex, cat2_total, cat2_ratio_ex)
+                )
+
+                # ---------- Step C: strengths ----------
+                T_ex = opt_total
+                M_ex = float(ex_row["median_opt_ros_in_cat3"])
+                option_strength_ex = float(ex_row["option_strength"])
+                cat3_strength_ex = float(ex_row["cat3_strength"])
+                core_coverage_ex = float(ex_row["core_coverage"])
+                option_strength_used_ex = float(ex_row["option_strength_used"])
+
+                st.markdown("**Step 3 – Option & Cat L3 strengths**")
+                st.latex(
+                    r"""
+base =
+\begin{cases}
+\dfrac{T}{T + M} & M > 0 \\
+0.5 & M \le 0 \text{ and } T > 0 \\
+0 & T = 0
+\end{cases}
+"""
+                )
+                st.latex(
+                    "T = %.2f, \\quad M = %.2f" % (T_ex, M_ex)
+                )
+                st.latex(
+                    r"option\_strength \approx %.3f" % option_strength_ex
+                )
+                st.latex(
+                    r"core\_coverage \approx %.3f" % core_coverage_ex
+                )
+                st.latex(
+                    r"option\_strength\_used = option\_strength \times core\_coverage \approx %.3f"
+                    % option_strength_used_ex
+                )
+                st.latex(
+                    r"cat3\_strength \approx %.3f" % cat3_strength_ex
+                )
+
+                # ---------- Step D: size-level weights ----------
+                w_opt_ex = float(ex_row["w_opt_size"])
+                w_c3_ex = float(ex_row["w_cat3_size"])
+                w_c2_ex = float(ex_row["w_cat2_size"])
+
+                st.markdown("**Step 4 – Weights for this size**")
+                st.latex(
+                    r"""
+shape\_raw(s)
+= w_{opt}(s)\,opt\_ratio(o,s)
++ w_{cat3}(s)\,cat\_l3\_ratio(c3,s)
++ w_{cat2}(s)\,cat\_l2\_ratio(c2,s)
+"""
+                )
+                st.latex(
+                    r"w_{opt}(s) \approx %.3f,\quad w_{cat3}(s) \approx %.3f,\quad w_{cat2}(s) \approx %.3f"
+                    % (w_opt_ex, w_c3_ex, w_c2_ex)
+                )
+
+                shape_raw_ex = float(ex_row["shape_raw"])
+                shape_norm_no_color_ex = float(ex_row["shape_norm_no_color"])
+
+                st.latex(
+                    r"shape\_raw(s) \approx (%.3f)(%.3f) + (%.3f)(%.3f) + (%.3f)(%.3f) \approx %.4f"
+                    % (
+                        w_opt_ex,
+                        opt_ratio_ex,
+                        w_c3_ex,
+                        cat3_ratio_ex,
+                        w_c2_ex,
+                        cat2_ratio_ex,
+                        shape_raw_ex,
+                    )
+                )
+                st.latex(
+                    r"shape\_norm\_no\_color(s) = \frac{shape\_raw(s)}{\sum_{s'} shape\_raw(s')} \approx %.4f"
+                    % shape_norm_no_color_ex
+                )
+                st.markdown(
+                    f"- Before colour, this size gets about "
+                    f"**{_fmt_pct(shape_norm_no_color_ex)}** of the mix."
+                )
+
+                # ---------- Step E: colour bias ----------
+                global_ratio_ex = float(ex_row["global_ratio"])
+                global_color_ratio_ex = float(ex_row["global_color_ratio"])
+                cat2_color_ratio_ex = float(ex_row["cat_l2_color_ratio"])
+                cat3_color_ratio_ex = float(ex_row["cat_l3_color_ratio"])
+
+                if global_ratio_ex > 0:
+                    bias_g_calc = global_color_ratio_ex / global_ratio_ex
+                else:
+                    bias_g_calc = 1.0
+
+                if cat2_ratio_ex > 0:
+                    bias_2_calc = cat2_color_ratio_ex / cat2_ratio_ex
+                else:
+                    bias_2_calc = 1.0
+
+                if cat3_ratio_ex > 0:
+                    bias_3_calc = cat3_color_ratio_ex / cat3_ratio_ex
+                else:
+                    bias_3_calc = 1.0
+
+                w_col_g = float(ex_row["w_color_global"])
+                w_col_2 = float(ex_row["w_color_cat2"])
+                w_col_3 = float(ex_row["w_color_cat3"])
+                bias_total_clamped_ex = float(ex_row["bias_total_clamped"])
+
+                st.markdown("**Step 5 – Colour bias for this size**")
+                st.latex(
+                    r"""
+bias\_raw(s)
+= w\_{col,global}\,bias_{global}(s)
++ w\_{col,cat2}\,bias_{cat2}(s)
++ w\_{col,cat3}\,bias_{cat3}(s)
+"""
+                )
+                st.latex(
+                    r"bias_{global}(s) \approx %.3f,\quad bias_{cat2}(s) \approx %.3f,\quad bias_{cat3}(s) \approx %.3f"
+                    % (bias_g_calc, bias_2_calc, bias_3_calc)
+                )
+                st.latex(
+                    r"w\_{col,global} \approx %.3f,\quad w\_{col,cat2} \approx %.3f,\quad w\_{col,cat3} \approx %.3f"
+                    % (w_col_g, w_col_2, w_col_3)
+                )
+                st.latex(
+                    r"bias\_{clamped}(s) \approx %.3f" % bias_total_clamped_ex
+                )
+
+                shape_with_color_raw_ex = float(ex_row["shape_with_color_raw"])
+                shape_with_color_norm_ex = float(ex_row["shape_with_color_norm"])
+
+                st.markdown("**Step 6 – Apply colour to the blended shape**")
+                st.latex(
+                    r"shape\_with\_color\_raw(s) = shape\_norm\_no\_color(s) \times bias\_{clamped}(s)"
+                )
+                st.latex(
+                    r"shape\_with\_color\_raw(s) \approx (%.4f)(%.3f) \approx %.4f"
+                    % (
+                        shape_norm_no_color_ex,
+                        bias_total_clamped_ex,
+                        shape_with_color_raw_ex,
+                    )
+                )
+                st.latex(
+                    r"shape\_with\_color\_norm(s) \approx %.4f"
+                    % shape_with_color_norm_ex
+                )
+
+                # ---------- Step G: core guardrails ----------
+                df_ex = full_opt  # all sizes, this option
+                core_share_before = float(
+                    df_ex["core_share_before_guardrail"].iloc[0]
+                )
+                core_share_after = float(
+                    df_ex["core_share_after_guardrail"].iloc[0]
+                )
+                before_core_ex = float(ex_row["final_before_core_guardrail"])
+                after_core_ex = float(ex_row["final_after_core_guardrail"])
+
+                st.markdown("**Step 7 – Core guardrails on this option**")
+                st.latex(
+                    r"core\_share\_{\text{before}} \approx %.3f,\quad core\_share\_{\text{after}} \approx %.3f"
+                    % (core_share_before, core_share_after)
+                )
+
+                if abs(core_share_before - core_share_after) > 1e-6:
+                    st.markdown(
+                        f"- Guardrail adjusted core share from "
+                        f"**{_fmt_pct(core_share_before)}** to "
+                        f"**{_fmt_pct(core_share_after)}**."
+                    )
+                    st.latex(
+                        r"final\_after\_core(s):\; %.4f \rightarrow %.4f"
+                        % (before_core_ex, after_core_ex)
+                    )
+                else:
+                    st.markdown(
+                        "- Core share already within [70%, 85%], so no rescaling was needed."
+                    )
+
+                # ---------- Step H: tail floors & final ratio ----------
+                tail_floor_ex = float(ex_row["tail_floor"])
+                after_tail_ex = float(ex_row["final_after_tail_floors"])
+                final_ratio_ex = float(ex_row["final_ratio"])
+
+                st.markdown("**Step 8 – Extended size floor & final ratio**")
+                if tail_floor_ex > 0 and ex_size.upper() in {"3XL", "4XL", "5XL", "6XL"}:
+                    st.markdown(
+                        f"- `{ex_size}` is an extended size with a floor of "
+                        f"{_fmt_pct(tail_floor_ex)} based on Cat L2+colour."
+                    )
+                    st.latex(
+                        r"final\_after\_tail(s) = \max(%.4f,\ %.4f) = %.4f"
+                        % (after_core_ex, tail_floor_ex, after_tail_ex)
+                    )
+                else:
+                    st.markdown(
+                        "- For this size, the extended-size floor is not binding."
+                    )
+
+                st.latex(
+                    r"final\_ratio(s) \approx %.4f" % final_ratio_ex
+                )
+                st.markdown(
+                    f"👉 **Final recommendation:** allocate about "
+                    f"**{_fmt_pct(final_ratio_ex)}** of this option’s buy to size `{ex_size}`."
+                )
+
+        except Exception as e:
+            st.warning(
+                "Could not build the worked example for this option due to missing or "
+                f"incompatible diagnostics.\n\nError: {e}"
+            )
+
+
+
+
 
 
 # ----- TAB 1: Raw option curve ----- #
@@ -1498,20 +2207,24 @@ with tab5:
 
 
 # ----- TAB 6: Detailed calculations ----- #
+# ----- TAB 6: Detailed calculations ----- #
 with tab6:
     st.subheader("6️⃣ Detailed calculations & reasons")
 
     st.markdown(
         """
-This view shows the **actual numbers** behind each key step for this option:
+This tab exposes the **actual internal numbers** that the engine used for this option:
 
-1. Option, Cat L3, and Cat L2 ROS totals  
-2. Cat L3 strength inside Cat L2  
-3. Option strength inside Cat L3  
-4. How final ratios differ from each baseline  
+1. ROS totals and strengths  
+2. How we compute **option_strength** and **cat3_strength**  
+3. Per-size blending weights between *option / Cat L3 / Cat L2*  
+4. Per-size **colour bias** factors and colour weights  
+5. Core-share guardrails (before vs after)  
+6. Extended size floors and the final curve  
 """
     )
 
+    # ----- 6.1 Total ROS and strengths -----
     df_valid = df_raw.loc[mask_status_ok].copy()
 
     total_ros_option = opt_total_ros
@@ -1527,47 +2240,49 @@ This view shows the **actual numbers** behind each key step for this option:
     c2.metric("Total ROS (Cat L3)", f"{total_ros_cat3:,.1f}")
     c3.metric("Total ROS (Cat L2)", f"{total_ros_cat2:,.1f}")
 
-    # Cat3 strength
+    # Cat3 strength from ROS share
     share_cat3 = total_ros_cat3 / total_ros_cat2 if total_ros_cat2 > 0 else 0.0
     cat3_strength_computed = share_cat3 ** CAT3_STRENGTH_POWER
+    cat3_strength_engine = float(df_opt_res["cat3_strength"].iloc[0])
 
-    st.markdown("**Cat L3 strength inside Cat L2**")
+    st.markdown("### 6.1.1 Cat L3 strength inside Cat L2")
 
     st.markdown('<div class="formula-box">', unsafe_allow_html=True)
-    st.latex(
-        r"share_{cat3} = \frac{TotalROS(cat3)}{TotalROS(cat2)}"
-    )
-    st.latex(
-        r"cat3\_strength = share_{cat3}^{0.5}"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.latex(r"share_{cat3} = \frac{TotalROS(cat3)}{TotalROS(cat2)}")
+    st.latex(r"cat3\_strength = share_{cat3}^{0.5}")
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.table(
         pd.DataFrame(
             {
                 "metric": [
-                    "share_cat3",
+                    "share_cat3 = TotalROS(cat3)/TotalROS(cat2)",
                     "cat3_strength (engine)",
                     "cat3_strength (recomputed)",
                 ],
                 "value": [
                     f"{share_cat3:.3f}",
-                    f"{cat3_strength:.3f}",
+                    f"{cat3_strength_engine:.3f}",
                     f"{cat3_strength_computed:.3f}",
                 ],
             }
         )
     )
 
-    # Option strength vs median in cat3
-    df_opt_level = (
+    # Option strength vs peers in same Cat L3
+    df_opt_level_all = (
         df_result.groupby([cat_l3_col, option_col])["opt_total_ros"]
         .first()
         .reset_index()
     )
-    df_opt_level_cat3 = df_opt_level[df_opt_level[cat_l3_col] == cat_l3_val]
+    df_opt_level_cat3 = df_opt_level_all[df_opt_level_all[cat_l3_col] == cat_l3_val]
+
     T = float(total_ros_option)
-    M = float(df_opt_level_cat3["opt_total_ros"].median()) if len(df_opt_level_cat3) else np.nan
+    M = (
+        float(df_opt_level_cat3["opt_total_ros"].median())
+        if len(df_opt_level_cat3)
+        else np.nan
+    )
 
     if np.isfinite(M) and M > 0:
         base = T / (T + M)
@@ -1576,24 +2291,26 @@ This view shows the **actual numbers** behind each key step for this option:
     else:
         base = 0.0
     option_strength_computed = base ** OPTION_STRENGTH_POWER
+    option_strength_engine = float(df_opt_res["option_strength"].iloc[0])
+    option_strength_used = float(df_opt_res["option_strength_used"].iloc[0])
+    core_coverage = float(df_opt_res["core_coverage"].iloc[0])
 
-    st.markdown("**Option strength vs peers in same Cat L3**")
+    st.markdown("### 6.1.2 Option strength vs peers in same Cat L3")
 
     st.markdown('<div class="formula-box">', unsafe_allow_html=True)
+    st.latex(r"T = ROS(option), \quad M = median\_ROS(\text{options in same Cat L3})")
     st.latex(
-        r"T = ROS(option), \quad M = median\_ROS(\text{options in same Cat L3})"
+        r"""
+base =
+\begin{cases}
+\dfrac{T}{T+M} & M > 0 \\
+0.5            & M \le 0 \text{ and } T > 0 \\
+0              & T = 0
+\end{cases}
+"""
     )
-    st.latex(
-        r"base = \begin{cases}"
-        r"\dfrac{T}{T+M} & M > 0 \\"
-        r"0.5 & M \le 0 \text{ and } T > 0 \\"
-        r"0 & T = 0"
-        r"\end{cases}"
-    )
-    st.latex(
-        r"option\_strength = base^{1.0}"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.latex(r"option\_strength = base^{1.0}")
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.table(
         pd.DataFrame(
@@ -1601,46 +2318,724 @@ This view shows the **actual numbers** behind each key step for this option:
                 "metric": [
                     "T = option total ROS",
                     "M = median option ROS in same Cat L3",
+                    "base = T / (T + M)",
                     "option_strength (engine)",
                     "option_strength (recomputed)",
+                    "core_coverage (actual vs expected core sizes)",
+                    "option_strength_used = option_strength × core_coverage",
                 ],
                 "value": [
                     f"{T:,.1f}",
                     f"{M:,.1f}" if np.isfinite(M) else "NA",
-                    f"{option_strength:.3f}",
+                    f"{base:.3f}",
+                    f"{option_strength_engine:.3f}",
                     f"{option_strength_computed:.3f}",
+                    f"{core_coverage:.3f}",
+                    f"{option_strength_used:.3f}",
                 ],
             }
         )
     )
 
-    # Per-size deltas
-    df_detail = pd.DataFrame(
-        {
-            "size": sizes_ordered,
-            "size_type": size_type_series.reindex(sizes_ordered).values,
-            "opt_ratio": opt_curve.reindex(sizes_ordered).values,
-            "cat_l3_ratio": cat3_curve.reindex(sizes_ordered).values,
-            "cat_l2_ratio": cat2_curve.reindex(sizes_ordered).values,
-            "final_ratio": final_curve.reindex(sizes_ordered).values,
-        }
-    ).set_index("size")
+    st.markdown("---")
 
-    for col in ["opt_ratio", "cat_l3_ratio", "cat_l2_ratio", "final_ratio"]:
-        df_detail[col + "_pct"] = df_detail[col].apply(_fmt_pct)
-
-    df_detail["Δ final - opt"] = df_detail["final_ratio"] - df_detail["opt_ratio"]
-    df_detail["Δ final - cat_l3"] = df_detail["final_ratio"] - df_detail["cat_l3_ratio"]
-    df_detail["Δ final - cat_l2"] = df_detail["final_ratio"] - df_detail["cat_l2_ratio"]
-
-    st.markdown("**Per-size view: how final curve differs from each baseline**")
-    st.dataframe(df_detail, use_container_width=True)
+    # ----- 6.2 Per-size blending: option vs Cat L3 vs Cat L2 -----
+    st.markdown("### 6.2 Per-size blending: option vs Cat L3 vs Cat L2")
 
     st.markdown(
-        '<p class="small-caption">Positive Δ means final curve is above that baseline, '
-        'negative means below. This shows how the engine tilts the curve.</p>',
+        """
+For each size we compute weights between **option**, **Cat L3**, and **Cat L2** curves,
+then blend them into a base shape **before colour**.
+"""
+    )
+
+    st.markdown('<div class="formula-box">', unsafe_allow_html=True)
+    st.latex(
+        r"shape_{\text{no\_color}}(s) = "
+        r"w_{opt}(s)\,opt\_ratio(s) + "
+        r"w_{c3}(s)\,cat\_l3\_ratio(s) + "
+        r"w_{c2}(s)\,cat\_l2\_ratio(s)"
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    cols_blend = [
+        "_size_str",
+        "size_type",
+        "opt_ratio",
+        "cat_l3_ratio",
+        "cat_l2_ratio",
+        "global_ratio",
+        "w_opt_size",
+        "w_cat3_size",
+        "w_cat2_size",
+        "shape_raw",
+        "shape_norm_no_color",
+    ]
+
+    df_step_blend = (
+        df_opt_res[cols_blend]
+        .set_index("_size_str")
+        .reindex(sizes_ordered)
+    )
+    df_step_blend.index.name = "size"
+
+    # % versions for the ratios / shapes
+    for col in [
+        "opt_ratio",
+        "cat_l3_ratio",
+        "cat_l2_ratio",
+        "global_ratio",
+        "shape_raw",
+        "shape_norm_no_color",
+    ]:
+        df_step_blend[col + "_pct"] = df_step_blend[col].apply(_fmt_pct)
+
+    df_step_blend = df_step_blend.rename(
+        columns={
+            "size_type": "size_type",
+            "w_opt_size": "w_opt",
+            "w_cat3_size": "w_cat3",
+            "w_cat2_size": "w_cat2",
+        }
+    )
+
+    st.markdown("**Per-size blend before colour:**")
+    st.dataframe(df_step_blend, use_container_width=True)
+
+    st.markdown(
+        '<p class="small-caption">'
+        "`shape_raw` is the un-normalised blend, `shape_norm_no_color` is the "
+        "normalised curve used as the base before applying colour bias.</p>",
         unsafe_allow_html=True,
     )
+
+    st.markdown("---")
+
+    # ----- 6.3 Colour bias (per size) -----
+    st.markdown("### 6.3 Colour bias: how the colour tilts the curve")
+
+    has_color = colorgroup_col in df_raw.columns and not pd.isna(color_val)
+    if not has_color:
+        st.info(
+            "This option has no colour group assigned. Colour bias is neutral "
+            "(all bias factors = 1, final shape = base shape)."
+        )
+
+    w_col_g = float(df_opt_res["w_color_global"].iloc[0])
+    w_col_2 = float(df_opt_res["w_color_cat2"].iloc[0])
+    w_col_3 = float(df_opt_res["w_color_cat3"].iloc[0])
+
+    st.markdown(
+        f"""
+**Colour weights across levels** (same for all sizes in this option):
+
+- Weight to **Global colour behaviour**: `{w_col_g:.3f}`  
+- Weight to **Cat L2 colour behaviour**: `{w_col_2:.3f}`  
+- Weight to **Cat L3 colour behaviour**: `{w_col_3:.3f}`  
+"""
+    )
+
+    st.markdown('<div class="formula-box">', unsafe_allow_html=True)
+    st.latex(
+        r"\text{bias}_{global}(s) = \frac{global\_color\_ratio(s)}{global\_ratio(s)}"
+    )
+    st.latex(
+        r"\text{bias}_{cat2}(s) = \frac{cat2\_color\_ratio(s)}{cat2\_ratio(s)},\quad"
+        r"\text{bias}_{cat3}(s) = \frac{cat3\_color\_ratio(s)}{cat3\_ratio(s)}"
+    )
+    st.latex(
+        r"bias_{\text{combined}}(s) ="
+        r" w_g\,\text{bias}_{global}(s) +"
+        r" w_2\,\text{bias}_{cat2}(s) +"
+        r" w_3\,\text{bias}_{cat3}(s)"
+    )
+    st.latex(
+        r"bias_{\text{clamped}}(s) \in"
+        r" [0.7, 1.3] \text{ (core)},\ [0.8, 1.2] \text{ (fringe)}"
+    )
+    st.latex(
+        r"shape_{\text{with\_color}}(s) \propto"
+        r" shape_{\text{no\_color}}(s) \times bias_{\text{clamped}}(s)"
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    cols_color = [
+        "_size_str",
+        "size_type",
+        "global_ratio",
+        "global_color_ratio",
+        "cat_l2_ratio",
+        "cat_l2_color_ratio",
+        "cat_l3_ratio",
+        "cat_l3_color_ratio",
+        "bias_global",
+        "bias_cat2",
+        "bias_cat3",
+        "bias_total_clamped",
+        "shape_norm_no_color",
+        "shape_with_color_norm",
+    ]
+    df_step_color = (
+        df_opt_res[cols_color]
+        .set_index("_size_str")
+        .reindex(sizes_ordered)
+    )
+    df_step_color.index.name = "size"
+
+    for col in [
+        "global_ratio",
+        "global_color_ratio",
+        "cat_l2_ratio",
+        "cat_l2_color_ratio",
+        "cat_l3_ratio",
+        "cat_l3_color_ratio",
+        "shape_norm_no_color",
+        "shape_with_color_norm",
+    ]:
+        df_step_color[col + "_pct"] = df_step_color[col].apply(_fmt_pct)
+
+    st.markdown("**Per-size colour bias breakdown:**")
+    st.dataframe(df_step_color, use_container_width=True)
+
+    st.markdown(
+        '<p class="small-caption">'
+        "`bias_total_clamped` is the actual multiplicative factor applied on the base "
+        "shape for that size, after mixing global/Cat L2/Cat L3 colour behaviour and "
+        "clamping to safe ranges.</p>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
+    # ----- 6.4 Core guardrails & tail floors -----
+    st.markdown("### 6.4 Core guardrails & extended-size floors")
+
+    core_share_before = float(df_opt_res["core_share_before_guardrail"].iloc[0])
+    core_share_after = float(df_opt_res["core_share_after_guardrail"].iloc[0])
+
+    st.markdown("#### 6.4.1 Core-share guardrails")
+
+    st.markdown('<div class="formula-box">', unsafe_allow_html=True)
+    st.latex(r"core\_share = \sum_{s \in core} final\_ratio(s)")
+    st.latex(r"core\_share \in [0.70,\ 0.85]")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.table(
+        pd.DataFrame(
+            {
+                "metric": [
+                    "core_share BEFORE guardrail",
+                    "core_share AFTER guardrail",
+                ],
+                "value": [
+                    f"{core_share_before:.3f} ({_fmt_pct(core_share_before)})",
+                    f"{core_share_after:.3f} ({_fmt_pct(core_share_after)})",
+                ],
+            }
+        )
+    )
+
+    st.markdown("#### 6.4.2 Tail floors for extended sizes (3XL+)")
+
+    df_guard = (
+        df_opt_res[
+            [
+                "_size_str",
+                "size_type",
+                "final_before_core_guardrail",
+                "final_after_core_guardrail",
+                "final_before_tail_floors",
+                "tail_floor",
+                "final_ratio",
+            ]
+        ]
+        .set_index("_size_str")
+        .reindex(sizes_ordered)
+    )
+    df_guard.index.name = "size"
+
+    for col in [
+        "final_before_core_guardrail",
+        "final_after_core_guardrail",
+        "final_before_tail_floors",
+        "tail_floor",
+        "final_ratio",
+    ]:
+        df_guard[col + "_pct"] = df_guard[col].apply(_fmt_pct)
+
+    st.markdown(
+        """
+**Per-size guardrail & floor view:**
+
+- `final_before_core_guardrail`: curve after colour, before core share adjustment  
+- `final_after_core_guardrail`: after rebalancing core vs fringe  
+- `final_before_tail_floors`: after core guardrail, before extended-size floors  
+- `tail_floor`: minimum floor applied vs Cat L2+colour curve (non-zero only for extended sizes)  
+- `final_ratio`: final engine curve used everywhere else  
+"""
+    )
+
+    st.dataframe(df_guard, use_container_width=True)
+
+    st.markdown(
+        '<p class="small-caption">'
+        "This table shows exactly how each size moves from raw blended shape, to "
+        "colour-adjusted curve, to core-guardrailed curve, and finally to the curve "
+        "with extended-size floors applied.</p>",
+        unsafe_allow_html=True,
+    )
+
+        # ----- 6.5 Per-size step explainer & dominant driver -----
+    st.markdown("---")
+    st.markdown("### 6.5 Per-size step explainer & dominant driver")
+
+    # Treat |Δ| < 0.2 percentage points as "no meaningful change"
+    EPS = 0.002
+
+    # One-size-only flag (from engine diagnostics)
+    is_one_size_only_flag = bool(
+        df_opt_res["is_one_size_only"].iloc[0]
+    ) if "is_one_size_only" in df_opt_res.columns else False
+
+    def _movement_label(delta: float, eps: float = EPS) -> str:
+        if delta > eps:
+            return "up"
+        elif delta < -eps:
+            return "down"
+        return "flat"
+
+    def _build_reason_tag(driver_key: str, movement: str) -> str:
+        if driver_key == "one_size":
+            return "One-size-only"
+        if driver_key == "neutral":
+            return "Neutral (tiny change)"
+
+        if driver_key == "shape":
+            base = "Shape"
+        elif driver_key == "colour":
+            base = "Colour"
+        elif driver_key == "guardrail":
+            base = "Core guardrail"
+        elif driver_key == "floor":
+            base = "Extended floor"
+        else:
+            base = "Mixed"
+
+        if movement == "up":
+            return f"{base} uplift"
+        elif movement == "down":
+            return f"{base} trim"
+        else:
+            return f"{base} neutral"
+
+    def _build_step_explainer(row) -> str:
+        """
+        Business-language explanation of why this size moved vs the raw option curve,
+        based on which step had the biggest effect.
+        """
+        if is_one_size_only_flag or row["dominant_driver_key"] == "one_size":
+            return (
+                "One-size-only option: 100% of demand is forced into this size, "
+                "so shape / colour / guardrails / floors are effectively neutral."
+            )
+
+        driver = row["dominant_driver_key"]
+        movement = row["movement"]
+        size_type = row["size_type"]
+        size_bucket = "core" if size_type == "core" else "fringe / extended"
+
+        # Shape-led movement
+        if driver == "shape":
+            if movement == "up":
+                return (
+                    f"Shape step pushes this {size_bucket} size **up vs raw option curve** "
+                    f"because Cat L3 / Cat L2 baselines concentrate more demand here and the "
+                    f"option is strong enough to support it."
+                )
+            elif movement == "down":
+                return (
+                    f"Shape step pulls this {size_bucket} size **down vs raw option curve** "
+                    f"because Cat L3 / Cat L2 baselines are weaker here and the option is "
+                    f"not strong enough to keep that extra share."
+                )
+            else:
+                return (
+                    f"Shape step keeps this {size_bucket} size broadly in line with the raw "
+                    f"option curve; category curves confirm the same story."
+                )
+
+        # Colour-led movement
+        if driver == "colour":
+            if movement == "up":
+                return (
+                    "Colour behaviour for this shade **over-indexes in this size** at category "
+                    "level, so the engine nudges the share up vs the neutral shape."
+                )
+            elif movement == "down":
+                return (
+                    "Colour for this shade **under-indexes in this size**, so the engine trims "
+                    "the share slightly vs the neutral shape."
+                )
+            else:
+                return (
+                    "Colour behaviour is broadly neutral here, so it doesn’t materially move "
+                    "this size vs the neutral shape."
+                )
+
+        # Core guardrail-led movement
+        if driver == "guardrail":
+            if movement == "up":
+                if size_type == "core":
+                    return (
+                        "Core-share guardrail **lifts this core size** so overall core share "
+                        "lands inside the 70–85% band without distorting intra-core shape."
+                    )
+                else:
+                    return (
+                        "Core-share guardrail **pulls more volume into core sizes**; this "
+                        "fringe size benefits slightly as part of the rebalancing."
+                    )
+            elif movement == "down":
+                if size_type == "core":
+                    return (
+                        "Core-share guardrail **trims this core size** a bit to avoid "
+                        "over-concentration in core and keep total core share inside the "
+                        "70–85% band."
+                    )
+                else:
+                    return (
+                        "Core-share guardrail **takes some share away from this fringe size** "
+                        "so that core sizes can be boosted back into the target band."
+                    )
+            else:
+                return (
+                    "Core-share guardrail does not materially move this size; core share was "
+                    "already within the desired band."
+                )
+
+        # Extended-size floor-led movement
+        if driver == "floor":
+            if movement == "up":
+                return (
+                    "Extended-size floor **protects this size** by giving it a minimum share "
+                    "vs the Cat L2 + colour baseline, so it cannot collapse to zero."
+                )
+            elif movement == "down":
+                return (
+                    "Extended-size floors raise some other extended sizes, so this size is "
+                    "slightly trimmed when the curve is renormalised."
+                )
+            else:
+                return (
+                    "Extended-size floors do not materially move this size; its share was "
+                    "already at or above the floor."
+                )
+
+        # Neutral / mixed case
+        return (
+            "Net effect across shape, colour, guardrails and floors is tiny here; this size "
+            "stays broadly in line with the raw option curve."
+        )
+
+    # Build per-size diagnostics based on engine columns
+    diag_cols = [
+        "_size_str",
+        "size_type",
+        "opt_ratio",
+        "shape_norm_no_color",
+        "shape_with_color_norm",
+        "final_before_core_guardrail",
+        "final_after_core_guardrail",
+        "final_before_tail_floors",
+        "final_after_tail_floors",
+        "final_ratio",
+    ]
+    df_diag = (
+        df_opt_res[diag_cols]
+        .set_index("_size_str")
+        .reindex(sizes_ordered)
+    )
+    df_diag.index.name = "size"
+
+    # Core deltas by step
+    df_diag["delta_vs_option"] = df_diag["final_ratio"] - df_diag["opt_ratio"]
+    df_diag["delta_shape"] = df_diag["shape_norm_no_color"] - df_diag["opt_ratio"]
+    df_diag["delta_colour"] = (
+        df_diag["shape_with_color_norm"] - df_diag["shape_norm_no_color"]
+    )
+    df_diag["delta_guardrail"] = (
+        df_diag["final_after_core_guardrail"] - df_diag["shape_with_color_norm"]
+    )
+    df_diag["delta_floor"] = (
+        df_diag["final_after_tail_floors"] - df_diag["final_before_tail_floors"]
+    )
+
+    # Dominant driver per size
+    delta_cols = ["delta_shape", "delta_colour", "delta_guardrail", "delta_floor"]
+    abs_deltas = df_diag[delta_cols].abs()
+    dominant_keys = abs_deltas.idxmax(axis=1)  # which step moved the most
+    dominant_magnitude = abs_deltas.max(axis=1)
+
+    driver_label_map = {
+        "delta_shape": "Shape (option vs category)",
+        "delta_colour": "Colour trend",
+        "delta_guardrail": "Core-share guardrail",
+        "delta_floor": "Extended size floor",
+    }
+    driver_key_map = {
+        "delta_shape": "shape",
+        "delta_colour": "colour",
+        "delta_guardrail": "guardrail",
+        "delta_floor": "floor",
+    }
+
+    df_diag["dominant_driver_key"] = dominant_keys.map(driver_key_map)
+    df_diag["dominant_driver"] = dominant_keys.map(driver_label_map)
+
+    # Neutral overrides for very tiny movements
+    df_diag.loc[dominant_magnitude < EPS, "dominant_driver_key"] = "neutral"
+    df_diag.loc[dominant_magnitude < EPS, "dominant_driver"] = "Neutral / tiny movement"
+
+    # One-size-only override
+    if is_one_size_only_flag:
+        df_diag["dominant_driver_key"] = "one_size"
+        df_diag["dominant_driver"] = "One-size-only (forced curve)"
+
+    # Movement vs raw option curve
+    df_diag["movement"] = df_diag["delta_vs_option"].apply(_movement_label)
+
+    # Δ vs option in p.p. for display & chips
+    df_diag["delta_vs_option_pp"] = df_diag["delta_vs_option"] * 100.0
+
+    # Reason tags & full explainers
+    df_diag["reason_tag"] = df_diag.apply(
+        lambda r: _build_reason_tag(r["dominant_driver_key"], r["movement"]),
+        axis=1,
+    )
+    df_diag["step_explainer"] = df_diag.apply(_build_step_explainer, axis=1)
+
+    # ----- 6.5.1 Business summary -----
+    st.markdown("#### 6.5.1 Business summary (what really moved this curve)")
+
+    if is_one_size_only_flag:
+        st.info(
+            "This option is **one-size-only**. The engine simply sends 100% of demand "
+            "into that size; shape / colour / guardrails / floors are neutral by design."
+        )
+    else:
+        n_sizes = len(df_diag.index)
+        up_count = int((df_diag["movement"] == "up").sum())
+        down_count = int((df_diag["movement"] == "down").sum())
+        flat_count = n_sizes - up_count - down_count
+
+        driver_counts = df_diag["dominant_driver_key"].value_counts()
+        shape_n = int(driver_counts.get("shape", 0))
+        colour_n = int(driver_counts.get("colour", 0))
+        guardrail_n = int(driver_counts.get("guardrail", 0))
+        floor_n = int(driver_counts.get("floor", 0))
+        neutral_n = int(driver_counts.get("neutral", 0))
+
+        st.markdown(
+            f"- **Sizes vs raw option curve:** {up_count} sizes moved up, "
+            f"{down_count} moved down, {flat_count} stayed broadly similar "
+            f"( |Δ| < 0.2 percentage points )."
+        )
+        st.markdown(
+            "- **Dominant drivers by count of sizes:** "
+            f"{shape_n}× Shape, {colour_n}× Colour, "
+            f"{guardrail_n}× Core guardrail, {floor_n}× Extended floors, "
+            f"{neutral_n}× Neutral."
+        )
+
+        # Identify main driver (ignoring neutral)
+        main_driver_key = None
+        for key in ["shape", "colour", "guardrail", "floor"]:
+            if driver_counts.get(key, 0) > 0:
+                if (
+                    main_driver_key is None
+                    or driver_counts.get(key, 0)
+                    > driver_counts.get(main_driver_key, 0)
+                ):
+                    main_driver_key = key
+
+        if main_driver_key == "shape":
+            st.markdown(
+                "Overall, the final curve is **shape-led**: we lean into Cat L3 / Cat L2 "
+                "size behaviour where the option is not strong enough to fully dictate "
+                "its own size curve."
+            )
+        elif main_driver_key == "colour":
+            st.markdown(
+                "Overall, the final curve is **colour-led**: movements are driven by how "
+                "this colour over- or under-indexes by size at category level."
+            )
+        elif main_driver_key == "guardrail":
+            st.markdown(
+                "Overall, **core-share guardrails** are doing most of the work: the engine "
+                "rebases core vs fringe to keep core share inside the 70–85% band while "
+                "preserving shapes inside each bucket."
+            )
+        elif main_driver_key == "floor":
+            st.markdown(
+                "Overall, **extended-size floors** play an important role: extended sizes "
+                "get a minimum share vs Cat L2+colour, and the rest of the curve adjusts "
+                "around that."
+            )
+
+    # ----- 6.5.2 Step explainer chips (hover tooltips) -----
+    st.markdown("#### 6.5.2 Step explainer chips (hover for details)")
+
+    step_explainer_css = """
+    <style>
+    .step-explainer-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+    .step-explainer-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.35rem 0.65rem;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        border: 1px solid #e5e7eb;
+        background: #ffffff;
+        gap: 0.35rem;
+        cursor: default;
+    }
+    .step-explainer-pill .size-badge {
+        font-weight: 600;
+        font-family: monospace;
+        padding: 0.1rem 0.35rem;
+        border-radius: 0.6rem;
+        background: #f3f4f6;
+    }
+    .step-explainer-pill .reason-tag {
+        font-weight: 500;
+    }
+    .step-explainer-pill .delta-label {
+        font-size: 0.75rem;
+        color: #4b5563;
+    }
+    .driver-shape {
+        background: #e0edff;
+        border-color: #bfdbfe;
+    }
+    .driver-colour {
+        background: #fff4e5;
+        border-color: #fed7aa;
+    }
+    .driver-guardrail {
+        background: #ede9fe;
+        border-color: #c4b5fd;
+    }
+    .driver-floor {
+        background: #e6f4ea;
+        border-color: #bbf7d0;
+    }
+    .driver-neutral {
+        background: #f3f4f6;
+        border-color: #e5e7eb;
+    }
+    .driver-one_size {
+        background: #fef3c7;
+        border-color: #facc15;
+    }
+    </style>
+    """
+    st.markdown(step_explainer_css, unsafe_allow_html=True)
+
+    chips = [
+        '<div class="step-card"><h4>💡 Per-size step explainer (hover on chips)</h4>',
+        '<div class="step-explainer-row">',
+    ]
+
+    for size, row in df_diag.iterrows():
+        driver_key = row["dominant_driver_key"] or "neutral"
+        if driver_key not in {"shape", "colour", "guardrail", "floor", "neutral", "one_size"}:
+            driver_key = "neutral"
+
+        reason_tag = row["reason_tag"]
+        explainer = str(row["step_explainer"]).replace("\n", " ")
+        delta_pp = float(row["delta_vs_option_pp"])
+        movement = row["movement"]
+
+        if movement == "up":
+            arrow = "⬆️"
+        elif movement == "down":
+            arrow = "⬇️"
+        else:
+            arrow = "⟷"
+
+        subtitle = f"{arrow} {delta_pp:+.1f} pp vs option"
+
+        chips.append(
+            f'<div class="step-explainer-pill driver-{driver_key}" title="{explainer}">'
+            f'<span class="size-badge">{size}</span>'
+            f'<span class="reason-tag">{reason_tag}</span>'
+            f'<span class="delta-label">{subtitle}</span>'
+            "</div>"
+        )
+
+    chips.append("</div></div>")
+    chips_html = "\n".join(chips)
+    st.markdown(chips_html, unsafe_allow_html=True)
+
+    # ----- 6.5.3 Detailed table with dominant driver, colours & reasons -----
+    st.markdown("#### 6.5.3 Detailed per-size table with dominant driver & reasons")
+
+    df_display = df_diag.copy()
+    df_display["option_curve_pct"] = df_display["opt_ratio"].apply(_fmt_pct)
+    df_display["final_ratio_pct"] = df_display["final_ratio"].apply(_fmt_pct)
+    df_display["delta_vs_option_pp_label"] = df_display["delta_vs_option_pp"].map(
+        lambda v: f"{v:+.1f} pp"
+    )
+
+    df_display = df_display[
+        [
+            "size_type",
+            "option_curve_pct",
+            "final_ratio_pct",
+            "delta_vs_option_pp_label",
+            "dominant_driver",
+            "reason_tag",
+            "step_explainer",
+        ]
+    ]
+    df_display.columns = [
+        "size_type",
+        "Option curve",
+        "Final curve (engine)",
+        "Δ vs option (pp)",
+        "Dominant driver",
+        "Reason tag",
+        "Business-friendly explainer",
+    ]
+
+    def _style_driver_cell(val: str) -> str:
+        if isinstance(val, str):
+            if val.startswith("Shape"):
+                return "background-color: #e0edff;"
+            if val.startswith("Colour"):
+                return "background-color: #fff4e5;"
+            if val.startswith("Core-share"):
+                return "background-color: #ede9fe;"
+            if val.startswith("Extended"):
+                return "background-color: #e6f4ea;"
+            if val.startswith("One-size"):
+                return "background-color: #fef3c7;"
+            if val.startswith("Neutral"):
+                return "background-color: #f3f4f6;"
+        return ""
+
+    styled = df_display.style.applymap(_style_driver_cell, subset=["Dominant driver"])
+    styled = styled.set_properties(**{"font-size": "0.85rem"})
+
+    st.dataframe(styled, use_container_width=True)
+
+
 
 
 # ----- TAB 7: Compare options ----- #
