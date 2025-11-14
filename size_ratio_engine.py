@@ -55,12 +55,14 @@ def compute_option_size_ratios_v5(
     Extended sizes:
         2XL / 3XL / 4XL / 5XL get a floor vs cat_l2+colour curve.
 
-    Returns one row per (option, size):
-        [option_col, size_col, (colorgroup_col),
-         cat_l3_col, cat_l2_col, size_type,
-         opt_ratio, cat_l3_ratio, cat_l2_ratio,
-         final_ratio, ratio_source,
-         opt_total_ros, option_strength, cat3_strength]
+    Returns one row per (option, size) with **full diagnostics**:
+        - raw curves & totals
+        - option & cat3 strengths
+        - blending weights w_opt / w_cat3 / w_cat2
+        - pre- and post-colour shapes
+        - colour bias components & weights
+        - core share before/after guardrails
+        - tail floors and final ratios
     """
 
     df = df_boosted_cat.copy()
@@ -149,7 +151,9 @@ def compute_option_size_ratios_v5(
             .sum()
             .reset_index()
         )
-        global_color["global_color_total_ros"] = global_color.groupby(colorgroup_col)[ros_col].transform("sum")
+        global_color["global_color_total_ros"] = global_color.groupby(colorgroup_col)[
+            ros_col
+        ].transform("sum")
         global_color["global_color_ratio"] = np.where(
             global_color["global_color_total_ros"] > 0,
             global_color[ros_col] / global_color["global_color_total_ros"],
@@ -159,7 +163,9 @@ def compute_option_size_ratios_v5(
             [colorgroup_col, size_col, "global_color_ratio", "global_color_total_ros"]
         ]
         # colour volumes for “core” colours
-        color_vol = global_color.groupby(colorgroup_col)["global_color_total_ros"].first()
+        color_vol = global_color.groupby(colorgroup_col)[
+            "global_color_total_ros"
+        ].first()
         core_colors = set(
             color_vol.sort_values(ascending=False).head(color_core_top_n).index
         )
@@ -179,15 +185,22 @@ def compute_option_size_ratios_v5(
             .sum()
             .reset_index()
         )
-        cat3c["cat_l3_color_total_ros"] = cat3c.groupby([cat_l3_col, colorgroup_col])[ros_col].transform("sum")
+        cat3c["cat_l3_color_total_ros"] = cat3c.groupby(
+            [cat_l3_col, colorgroup_col]
+        )[ros_col].transform("sum")
         cat3c["cat_l3_color_ratio"] = np.where(
             cat3c["cat_l3_color_total_ros"] > 0,
             cat3c[ros_col] / cat3c["cat_l3_color_total_ros"],
             0.0,
         )
         cat3c = cat3c[
-            [cat_l3_col, colorgroup_col, size_col,
-             "cat_l3_color_ratio", "cat_l3_color_total_ros"]
+            [
+                cat_l3_col,
+                colorgroup_col,
+                size_col,
+                "cat_l3_color_ratio",
+                "cat_l3_color_total_ros",
+            ]
         ]
 
         cat2c = (
@@ -195,15 +208,22 @@ def compute_option_size_ratios_v5(
             .sum()
             .reset_index()
         )
-        cat2c["cat_l2_color_total_ros"] = cat2c.groupby([cat_l2_col, colorgroup_col])[ros_col].transform("sum")
+        cat2c["cat_l2_color_total_ros"] = cat2c.groupby(
+            [cat_l2_col, colorgroup_col]
+        )[ros_col].transform("sum")
         cat2c["cat_l2_color_ratio"] = np.where(
             cat2c["cat_l2_color_total_ros"] > 0,
             cat2c[ros_col] / cat2c["cat_l2_color_total_ros"],
             0.0,
         )
         cat2c = cat2c[
-            [cat_l2_col, colorgroup_col, size_col,
-             "cat_l2_color_ratio", "cat_l2_color_total_ros"]
+            [
+                cat_l2_col,
+                colorgroup_col,
+                size_col,
+                "cat_l2_color_ratio",
+                "cat_l2_color_total_ros",
+            ]
         ]
     else:
         cat3c = None
@@ -215,8 +235,11 @@ def compute_option_size_ratios_v5(
 
     # mapping cat_l3 -> cat_l2 (assume 1-1)
     cat3_to_cat2 = (
-        df[[cat_l3_col, cat_l2_col]].dropna().drop_duplicates()
-        .set_index(cat_l3_col)[cat_l2_col].to_dict()
+        df[[cat_l3_col, cat_l2_col]]
+        .dropna()
+        .drop_duplicates()
+        .set_index(cat_l3_col)[cat_l2_col]
+        .to_dict()
     )
 
     cat3_strength_map: Dict[str, float] = {}
@@ -239,12 +262,12 @@ def compute_option_size_ratios_v5(
             cat2c.groupby([cat_l2_col, colorgroup_col])["cat_l2_color_total_ros"]
             .first()
             .to_dict()
-        ) if cat2c is not None else {}
+        )
         cat3_color_vol_map = (
             cat3c.groupby([cat_l3_col, colorgroup_col])["cat_l3_color_total_ros"]
             .first()
             .to_dict()
-        ) if cat3c is not None else {}
+        )
     else:
         global_total_col_ros = 1.0
         cat2_color_vol_map = {}
@@ -330,8 +353,8 @@ def compute_option_size_ratios_v5(
     # 6) Merge all curves into child
     curves = (
         child.merge(cat3, on=[cat_l3_col, size_col], how="left")
-             .merge(cat2, on=[cat_l2_col, size_col], how="left")
-             .merge(global_size, on=size_col, how="left")
+        .merge(cat2, on=[cat_l2_col, size_col], how="left")
+        .merge(global_size, on=size_col, how="left")
     )
 
     if use_color and cat3c is not None:
@@ -380,12 +403,16 @@ def compute_option_size_ratios_v5(
         base = base ** option_strength_power
         return float(max(0.0, min(1.0, base)))
 
-    opt_level["option_strength"] = opt_level.apply(_compute_option_strength, axis=1)
+    opt_level["option_strength"] = opt_level.apply(
+        _compute_option_strength, axis=1
+    )
 
     # attach option_strength & cat3_strength to curves
     cat3_strength_series = pd.Series(cat3_strength_map, name="cat3_strength")
     curves = curves.merge(
-        opt_level[[cat_l3_col, option_col, "median_opt_ros_in_cat3", "option_strength"]],
+        opt_level[
+            [cat_l3_col, option_col, "median_opt_ros_in_cat3", "option_strength"]
+        ],
         on=[cat_l3_col, option_col],
         how="left",
     ).merge(
@@ -403,18 +430,55 @@ def compute_option_size_ratios_v5(
         s = str(size).strip().upper()
         return any(x in s for x in ["2XL", "3XL", "4XL", "5XL"])
 
-    # 8) Per-option blending
+    # 8) Per-option blending with detailed diagnostics
     def _blend_for_option(group: pd.DataFrame) -> pd.DataFrame:
         g = group.copy()
 
-        # ONE-SIZE-only option
+        # ONE-SIZE-only option: trivial, but still fill diagnostics
         if bool(g["is_one_size_only"].iloc[0]):
             g["final_ratio"] = 0.0
             mask = g[size_col].apply(lambda s: _is_one_size_value(str(s)))
             if mask.any():
                 g.loc[mask, "final_ratio"] = 1.0
+
             g["ratio_source"] = "one_size"
             g["option_strength_used"] = 0.0
+            g["core_coverage"] = 1.0
+
+            # neutral diagnostics
+            n = len(g)
+            g["w_opt_size"] = 0.0
+            g["w_cat3_size"] = 0.0
+            g["w_cat2_size"] = 0.0
+            g["shape_raw"] = g["final_ratio"]
+            g["shape_norm_no_color"] = g["final_ratio"]
+
+            g["w_color_global"] = 1.0
+            g["w_color_cat2"] = 0.0
+            g["w_color_cat3"] = 0.0
+
+            g["bias_global"] = 1.0
+            g["bias_cat2"] = 1.0
+            g["bias_cat3"] = 1.0
+            g["bias_total_clamped"] = 1.0
+
+            g["shape_with_color_raw"] = g["final_ratio"]
+            g["shape_with_color_norm"] = g["final_ratio"]
+
+            core_mask = g["size_type"] == "core"
+            core_sum = float(g.loc[core_mask, "final_ratio"].sum()) if core_mask.any() else 0.0
+
+            g["final_before_core_guardrail"] = g["final_ratio"]
+            g["final_after_core_guardrail"] = g["final_ratio"]
+            g["core_share_before_guardrail"] = core_sum
+            g["core_share_after_guardrail"] = core_sum
+
+            final = g["final_ratio"].to_numpy()
+            g["final_before_tail_floors"] = final
+            g["tail_floor"] = np.zeros_like(final)
+            g["final_after_tail_floors"] = final
+            g["cat2_color_baseline_for_tail"] = np.nan
+
             return g
 
         opt_strength = float(g["option_strength"].iloc[0])
@@ -434,7 +498,9 @@ def compute_option_size_ratios_v5(
         opt_ratio = g["opt_ratio"].fillna(0.0)
 
         # core coverage for this option
-        sizes_present_core = g.loc[g["size_type"] == "core", size_col].astype(str).unique()
+        sizes_present_core = (
+            g.loc[g["size_type"] == "core", size_col].astype(str).unique()
+        )
         if cat3_val in cat3_core_map:
             expected_core = cat3_core_map[cat3_val]
         elif cat2_val in cat2_core_map:
@@ -442,7 +508,9 @@ def compute_option_size_ratios_v5(
         else:
             expected_core = {"M", "L", "XL"}
         expected_core_count = len(expected_core) or 1
-        core_coverage = len(set(sizes_present_core) & set(expected_core)) / expected_core_count
+        core_coverage = (
+            len(set(sizes_present_core) & set(expected_core)) / expected_core_count
+        )
 
         # --- option vs cat_l3 vs cat_l2 weights (core vs fringe) ---
         opt_strength_used = opt_strength * core_coverage
@@ -454,7 +522,7 @@ def compute_option_size_ratios_v5(
                 w_cat_total = 1.0 - w_opt
                 # cat_l3 gets small premium vs cat_l2, bounded 0.50..0.60
                 f_cat3 = 0.50 + 0.10 * cat3_strength
-            else:  # fringe
+            else:  # fringe / one_size
                 w_opt = opt_fringe_min + (opt_fringe_max - opt_fringe_min) * opt_strength_used
                 w_cat_total = 1.0 - w_opt
                 # fringe: cat_l3 slightly below/around cat_l2, 0.45..0.50
@@ -484,26 +552,32 @@ def compute_option_size_ratios_v5(
             base_cat3 = global_ratio.copy()
             base_cat2 = global_ratio.copy()
 
-        shape = (
-            w_opt_arr * opt_ratio
-            + w_cat3_arr * base_cat3
-            + w_cat2_arr * base_cat2
+        # blended shape before colour
+        shape_raw = (
+            w_opt_arr * opt_ratio.to_numpy()
+            + w_cat3_arr * base_cat3.to_numpy()
+            + w_cat2_arr * base_cat2.to_numpy()
         )
-
-        if shape.sum() <= 0:
+        if shape_raw.sum() <= 0:
             shape = np.full(len(g), 1.0 / len(g))
         else:
-            shape = shape / shape.sum()
+            shape = shape_raw / shape_raw.sum()
 
         # --- Colour bias (global / cat_l2 / cat_l3) ---
         if use_color and color_val is not None and not pd.isna(color_val):
             T_cat3 = float(cat3_vol_map.get(cat3_val, 0.0))
             T_cat2 = float(cat2_vol_map.get(cat2_val, 0.0))
-            T_cat3_color = float(cat3_color_vol_map.get((cat3_val, color_val), 0.0))
-            T_cat2_color = float(cat2_color_vol_map.get((cat2_val, color_val), 0.0))
+            T_cat3_color = float(
+                cat3_color_vol_map.get((cat3_val, color_val), 0.0)
+            )
+            T_cat2_color = float(
+                cat2_color_vol_map.get((cat2_val, color_val), 0.0)
+            )
             T_global_color = float(global_color_vol_map.get(color_val, 0.0))
 
-            share_global_col = T_global_color / global_total_col_ros if global_total_col_ros > 0 else 0.0
+            share_global_col = (
+                T_global_color / global_total_col_ros if global_total_col_ros > 0 else 0.0
+            )
             share_cat2_col = T_cat2_color / T_cat2 if T_cat2 > 0 else 0.0
             share_cat3_col = T_cat3_color / T_cat3 if T_cat3 > 0 else 0.0
 
@@ -551,9 +625,15 @@ def compute_option_size_ratios_v5(
                     1.0,
                 )
 
-            bias_global = np.nan_to_num(bias_global, nan=1.0, posinf=1.0, neginf=1.0)
-            bias_cat2 = np.nan_to_num(bias_cat2, nan=1.0, posinf=1.0, neginf=1.0)
-            bias_cat3 = np.nan_to_num(bias_cat3, nan=1.0, posinf=1.0, neginf=1.0)
+            bias_global = np.nan_to_num(
+                bias_global, nan=1.0, posinf=1.0, neginf=1.0
+            )
+            bias_cat2 = np.nan_to_num(
+                bias_cat2, nan=1.0, posinf=1.0, neginf=1.0
+            )
+            bias_cat3 = np.nan_to_num(
+                bias_cat3, nan=1.0, posinf=1.0, neginf=1.0
+            )
 
             bias_total = []
             for i, st in enumerate(g["size_type"]):
@@ -575,11 +655,41 @@ def compute_option_size_ratios_v5(
                 coloured = coloured / coloured.sum()
             else:
                 coloured = shape.copy()
-            base_final = coloured
+
             ratio_source = "shape+color_hier"
         else:
-            base_final = shape
+            # neutral colour behaviour
+            w_col_global = 1.0
+            w_col_cat2 = 0.0
+            w_col_cat3 = 0.0
+            bias_global = np.ones(len(g))
+            bias_cat2 = np.ones(len(g))
+            bias_cat3 = np.ones(len(g))
+            bias_total = np.ones(len(g))
+            coloured = shape.copy()
             ratio_source = "shape_only"
+
+        base_final = coloured
+
+        # store blending & colour diagnostics
+        g["core_coverage"] = core_coverage
+        g["w_opt_size"] = w_opt_arr
+        g["w_cat3_size"] = w_cat3_arr
+        g["w_cat2_size"] = w_cat2_arr
+        g["shape_raw"] = shape_raw
+        g["shape_norm_no_color"] = shape
+
+        g["w_color_global"] = w_col_global
+        g["w_color_cat2"] = w_col_cat2
+        g["w_color_cat3"] = w_col_cat3
+
+        g["bias_global"] = bias_global
+        g["bias_cat2"] = bias_cat2
+        g["bias_cat3"] = bias_cat3
+        g["bias_total_clamped"] = bias_total
+
+        g["shape_with_color_raw"] = shape * bias_total
+        g["shape_with_color_norm"] = base_final
 
         g["final_ratio"] = base_final
 
@@ -587,6 +697,9 @@ def compute_option_size_ratios_v5(
         core_mask = g["size_type"] == "core"
         core_sum = float(g.loc[core_mask, "final_ratio"].sum())
         fringe_sum = float(g.loc[~core_mask, "final_ratio"].sum())
+
+        g["final_before_core_guardrail"] = g["final_ratio"].to_numpy()
+        g["core_share_before_guardrail"] = core_sum
 
         if core_mask.any() and fringe_sum > 0:
             target_core = core_sum
@@ -599,63 +712,124 @@ def compute_option_size_ratios_v5(
                 if core_sum > 0:
                     g.loc[core_mask, "final_ratio"] *= (target_core / core_sum)
                 if fringe_sum > 0:
-                    g.loc[~core_mask, "final_ratio"] *= ((1.0 - target_core) / fringe_sum)
+                    g.loc[~core_mask, "final_ratio"] *= (
+                        (1.0 - target_core) / fringe_sum
+                    )
+
+        core_sum_after = float(g.loc[core_mask, "final_ratio"].sum()) if core_mask.any() else 0.0
+        g["core_share_after_guardrail"] = core_sum_after
+        g["final_after_core_guardrail"] = g["final_ratio"].to_numpy()
 
         # --- Tail floors vs cat_l2+colour (extended sizes) ---
         if use_color and color_val is not None and not pd.isna(color_val):
             with np.errstate(divide="ignore", invalid="ignore"):
                 tail_bias_cat2 = np.where(
                     base_cat2 > 0,
-                    base_color_cat2 / base_cat2,
+                    g["cat_l2_color_ratio"].fillna(0.0) / base_cat2,
                     1.0,
                 )
-            tail_bias_cat2 = np.nan_to_num(tail_bias_cat2, nan=1.0, posinf=1.0, neginf=1.0)
-            cat2_color_baseline = base_cat2 * tail_bias_cat2
+            tail_bias_cat2 = np.nan_to_num(
+                tail_bias_cat2, nan=1.0, posinf=1.0, neginf=1.0
+            )
+            cat2_color_baseline = base_cat2.to_numpy() * tail_bias_cat2
             if cat2_color_baseline.sum() > 0:
-                cat2_color_baseline = cat2_color_baseline / cat2_color_baseline.sum()
+                cat2_color_baseline = (
+                    cat2_color_baseline / cat2_color_baseline.sum()
+                )
         else:
-            cat2_color_baseline = base_cat2.copy()
+            cat2_color_baseline = base_cat2.to_numpy().copy()
             if cat2_color_baseline.sum() > 0:
-                cat2_color_baseline = cat2_color_baseline / cat2_color_baseline.sum()
+                cat2_color_baseline = (
+                    cat2_color_baseline / cat2_color_baseline.sum()
+                )
 
         final = g["final_ratio"].to_numpy()
+        g["final_before_tail_floors"] = final.copy()
+
         if cat2_color_baseline.sum() > 0 and tail_floor_factor > 0:
             floors = []
             for i, sz in enumerate(g[size_col]):
                 if _is_extended(sz):
-                    floors.append(tail_floor_factor * cat2_color_baseline.iloc[i])
+                    floors.append(tail_floor_factor * cat2_color_baseline[i])
                 else:
                     floors.append(0.0)
             floors = np.array(floors)
             floor_sum = floors.sum()
             if floor_sum > 1e-9:
                 if floor_sum > 0.9:
-                    floors *= (0.9 / floor_sum)
+                    floors *= 0.9 / floor_sum
                 final = np.maximum(final, floors)
                 if final.sum() > 0:
                     final /= final.sum()
+        else:
+            floors = np.zeros_like(final)
 
+        g["tail_floor"] = floors
         g["final_ratio"] = final
+        g["final_after_tail_floors"] = final
+        g["cat2_color_baseline_for_tail"] = cat2_color_baseline
+
         g["ratio_source"] = ratio_source
         g["option_strength_used"] = opt_strength_used
         return g
 
     out = curves.groupby(option_col, group_keys=False).apply(_blend_for_option)
 
-    # 9) Final tidy output
+    # 9) Final tidy output (keep diagnostics)
     cols = [
-        option_col, size_col,
-        cat_l3_col, cat_l2_col,
+        option_col,
+        size_col,
+        cat_l3_col,
+        cat_l2_col,
         "size_type",
+        "is_one_size_only",
+        "opt_total_ros",
         "opt_ratio",
-        "cat_l3_ratio", "cat_l2_ratio",
-        "final_ratio", "ratio_source",
-        "opt_total_ros", "option_strength", "cat3_strength",
+        "cat_l3_ratio",
+        "cat_l3_total_ros",
+        "cat_l2_ratio",
+        "cat_l2_total_ros",
+        "global_ratio",
+        "global_color_ratio",
+        "global_color_total_ros",
+        "cat_l3_color_ratio",
+        "cat_l3_color_total_ros",
+        "cat_l2_color_ratio",
+        "cat_l2_color_total_ros",
+        "median_opt_ros_in_cat3",
+        "option_strength",
+        "option_strength_used",
+        "cat3_strength",
+        "core_coverage",
+        "w_opt_size",
+        "w_cat3_size",
+        "w_cat2_size",
+        "shape_raw",
+        "shape_norm_no_color",
+        "w_color_global",
+        "w_color_cat2",
+        "w_color_cat3",
+        "bias_global",
+        "bias_cat2",
+        "bias_cat3",
+        "bias_total_clamped",
+        "shape_with_color_raw",
+        "shape_with_color_norm",
+        "final_before_core_guardrail",
+        "final_after_core_guardrail",
+        "core_share_before_guardrail",
+        "core_share_after_guardrail",
+        "cat2_color_baseline_for_tail",
+        "final_before_tail_floors",
+        "tail_floor",
+        "final_after_tail_floors",
+        "final_ratio",
+        "ratio_source",
     ]
+
     if use_color:
+        # ensure colour group column is near front
         cols.insert(2, colorgroup_col)
 
     out = out[cols].reset_index(drop=True)
     return out
-
-
