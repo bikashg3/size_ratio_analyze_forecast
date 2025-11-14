@@ -596,7 +596,7 @@ snapshot_html = f"""
   <div class="pill pill-tertiary" title="{extended_tt}">
     <div class="pill-dot pill-dot-tertiary"></div>
     <div class="pill-text-block">
-      <div class="pill-label">Extended (2XL+)</div>
+      <div class="pill-label">Extended (3XL+)</div>
       <div class="pill-value">{extended_count_top} sizes</div>
       <div class="pill-subvalue">{_fmt_pct(extended_share_top)} of demand</div>
     </div>
@@ -806,7 +806,7 @@ with tab_logic:
     st.markdown("#### 6. Core vs fringe size tagging")
 
     st.markdown(
-        "- At Cat L3 and Cat L2 level, we sort sizes by share and pick minimal set covering ~80% ROS (min 2, max 4 sizes). "
+        "- At Cat L3 and Cat L2 level, we sort sizes by share and pick minimal set covering ~80% ROS (min 2, max 3 sizes). "
         "These are inferred **core sizes**.\n"
         "- Everything else becomes **fringe**.\n"
         "- For a given option, if it has good coverage on expected core sizes, we trust its option curve more."
@@ -885,7 +885,7 @@ with tab_logic:
     st.markdown("#### 10. Extended sizes floors")
 
     st.markdown(
-        "- For 2XL, 3XL, 4XL, 5XL etc., we set a minimum floor relative to Cat L2 + colour curve.\n"
+        "- For 3XL, 4XL, 5XL etc., we set a minimum floor relative to Cat L2 + colour curve.\n"
         "- This avoids allocating **zero** to extended sizes where the brand wants a minimum presence."
     )
 
