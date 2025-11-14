@@ -19,7 +19,7 @@ def compute_option_size_ratios_v5(
     size_config: Optional[Dict[Tuple[str, str], Dict[str, Iterable[str]]]] = None,
     # hyper-parameters
     core_share_min: float = 0.70,
-    core_share_max: float = 0.90,
+    core_share_max: float = 0.85,
     auto_core_target_share: float = 0.80,
     # option weight ranges (core vs fringe)
     opt_core_min: float = 0.20,
@@ -657,4 +657,5 @@ def compute_option_size_ratios_v5(
 
     out = out[cols].reset_index(drop=True)
     return out
+
 
