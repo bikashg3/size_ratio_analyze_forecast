@@ -275,8 +275,8 @@ def compute_option_size_ratios_v5(
                 break
         if len(core) < 2 and len(sizes) >= 2:
             core = sizes[:2]
-        if len(core) > 4:
-            core = core[:4]
+        if len(core) > 3:
+            core = core[:3]
         return pd.Series(core, dtype=object)
 
     cat3_core_map: Dict[str, set] = {}
@@ -657,3 +657,4 @@ def compute_option_size_ratios_v5(
 
     out = out[cols].reset_index(drop=True)
     return out
+
